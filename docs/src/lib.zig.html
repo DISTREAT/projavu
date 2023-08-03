@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>lib.zig - source view</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAgklEQVR4AWMYWuD7EllJIM4G4g4g5oIJ/odhOJ8wToOxSTXgNxDHoeiBMfA4+wGShjyYOCkG/IGqWQziEzYAoUAeiF9D5U+DxEg14DRU7jWIT5IBIOdCxf+A+CQZAAoopEB7QJwBCBwHiip8UYmRdrAlDpIMgApwQZNnNii5Dq0MBgCxxycBnwEd+wAAAABJRU5ErkJggg=="/>
+    <style>
+      body{
+        font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      pre > code {
+        display: block;
+        overflow: auto;
+        line-height: normal;
+        margin: 0em;
+      }
+      .tok-kw {
+          color: #333;
+          font-weight: bold;
+      }
+      .tok-str {
+          color: #d14;
+      }
+      .tok-builtin {
+          color: #005C7A;
+      }
+      .tok-comment {
+          color: #545454;
+          font-style: italic;
+      }
+      .tok-fn {
+          color: #900;
+          font-weight: bold;
+      }
+      .tok-null {
+          color: #005C5C;
+      }
+      .tok-number {
+          color: #005C5C;
+      }
+      .tok-type {
+          color: #458;
+          font-weight: bold;
+      }
+      pre {
+        counter-reset: line;
+      }
+      pre .line:before {
+        counter-increment: line;
+        content: counter(line);
+        display: inline-block;
+        padding-right: 1em;
+        width: 2em;
+        text-align: right;
+        color: #999;
+      }
+      
+      .line {
+        width: 100%;
+        display: inline-block;
+      }
+      .line:target {
+        border-top: 1px solid #ccc;
+        border-bottom: 1px solid #ccc;
+        background: #fafafa;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body{
+            background:#222;
+            color: #ccc;
+        }
+        pre > code {
+            color: #ccc;
+            background: #222;
+            border: unset;
+        }
+        .line:target {
+            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
+            background: #333;
+        }
+        .tok-kw {
+            color: #eee;
+        }
+        .tok-str {
+            color: #2e5;
+        }
+        .tok-builtin {
+            color: #ff894c;
+        }
+        .tok-comment {
+            color: #aa7;
+        }
+        .tok-fn {
+            color: #B1A0F8;
+        }
+        .tok-null {
+            color: #ff8080;
+        }
+        .tok-number {
+            color: #ff8080;
+        }
+        .tok-type {
+            color: #68f;
+        }
+      }
+    </style>
+</head>
+<body>
+<pre><code><span class="line" id="L1"><span class="tok-comment">//! This module provides structs for on-disk storing and managing of project ideas</span></span>
+<span class="line" id="L2"><span class="tok-comment">//! [Released under GNU LGPLv3]</span></span>
+<span class="line" id="L3"><span class="tok-comment">//!</span></span>
+<span class="line" id="L4"><span class="tok-kw">const</span> std = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;std&quot;</span>);</span>
+<span class="line" id="L5"><span class="tok-kw">const</span> csv = <span class="tok-builtin">@import</span>(<span class="tok-str">&quot;zig-csv&quot;</span>);</span>
+<span class="line" id="L6"><span class="tok-kw">const</span> Allocator = std.mem.Allocator;</span>
+<span class="line" id="L7"><span class="tok-kw">const</span> ArrayList = std.ArrayList;</span>
+<span class="line" id="L8"><span class="tok-kw">const</span> Sha256 = std.crypto.hash.sha2.Sha256;</span>
+<span class="line" id="L9"></span>
+<span class="line" id="L10"><span class="tok-comment">/// Representation of an idea</span></span>
+<span class="line" id="L11"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> Idea = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L12">    <span class="tok-comment">// Used for the allocation and freeing of the field values</span>
+</span>
+<span class="line" id="L13">    allocator: Allocator,</span>
+<span class="line" id="L14">    <span class="tok-comment">/// The idea's ID, as stored in the lookup table</span></span>
+<span class="line" id="L15">    id: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L16">    <span class="tok-comment">/// The idea's reference to the on-disk content</span></span>
+<span class="line" id="L17">    reference: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L18">    <span class="tok-comment">/// The idea's title, as stored in the lookup table</span></span>
+<span class="line" id="L19">    title: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L20">    <span class="tok-comment">/// The idea's content, as stored on-disk</span></span>
+<span class="line" id="L21">    content: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L22">    <span class="tok-comment">/// The idea's progress, as stored in the lookup table</span></span>
+<span class="line" id="L23">    progress: IdeaProgress,</span>
+<span class="line" id="L24">    <span class="tok-comment">/// The idea's tags, as stored in the lookup table</span></span>
+<span class="line" id="L25">    tags: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L26"></span>
+<span class="line" id="L27">    <span class="tok-comment">/// Free all used memory</span></span>
+<span class="line" id="L28">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">deinit</span>(self: Idea) <span class="tok-type">void</span> {</span>
+<span class="line" id="L29">        self.allocator.free(self.title);</span>
+<span class="line" id="L30">        self.allocator.free(self.reference);</span>
+<span class="line" id="L31">        self.allocator.free(self.content);</span>
+<span class="line" id="L32">        <span class="tok-kw">for</span> (self.tags) |tag| self.allocator.free(tag);</span>
+<span class="line" id="L33">        self.allocator.free(self.tags);</span>
+<span class="line" id="L34">    }</span>
+<span class="line" id="L35">};</span>
+<span class="line" id="L36"></span>
+<span class="line" id="L37"><span class="tok-comment">/// Representation of an idea's progress</span></span>
+<span class="line" id="L38"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IdeaProgress = <span class="tok-kw">enum</span> {</span>
+<span class="line" id="L39">    <span class="tok-comment">/// This stage represents an idea that is being brainstormed or considered, but not acted upon</span></span>
+<span class="line" id="L40">    pending,</span>
+<span class="line" id="L41">    <span class="tok-comment">/// This stage represents an idea that is being considered for implementation in the near future</span></span>
+<span class="line" id="L42">    nigh,</span>
+<span class="line" id="L43">    <span class="tok-comment">/// This stage represents an idea that is currently being implemented</span></span>
+<span class="line" id="L44">    current,</span>
+<span class="line" id="L45">    <span class="tok-comment">/// This stage represents an idea that has been implemented and is now being managed, maintained, and possibly improved</span></span>
+<span class="line" id="L46">    maintain,</span>
+<span class="line" id="L47">    <span class="tok-comment">/// This stage represents an idea that is no longer being maintained or acted upon</span></span>
+<span class="line" id="L48">    archived,</span>
+<span class="line" id="L49">    <span class="tok-comment">/// This stage represents an idea that has been intentionally delayed or postponed, possibly without a specific time frame or deadline</span></span>
+<span class="line" id="L50">    @&quot;defer&quot;,</span>
+<span class="line" id="L51"></span>
+<span class="line" id="L52">    <span class="tok-kw">const</span> string_representation = [_][]<span class="tok-kw">const</span> <span class="tok-type">u8</span>{</span>
+<span class="line" id="L53">        <span class="tok-str">&quot;pending&quot;</span>,</span>
+<span class="line" id="L54">        <span class="tok-str">&quot;nigh&quot;</span>,</span>
+<span class="line" id="L55">        <span class="tok-str">&quot;current&quot;</span>,</span>
+<span class="line" id="L56">        <span class="tok-str">&quot;maintain&quot;</span>,</span>
+<span class="line" id="L57">        <span class="tok-str">&quot;archived&quot;</span>,</span>
+<span class="line" id="L58">        <span class="tok-str">&quot;defer&quot;</span>,</span>
+<span class="line" id="L59">    };</span>
+<span class="line" id="L60"></span>
+<span class="line" id="L61">    <span class="tok-comment">/// Convert the enum value into a string representation</span></span>
+<span class="line" id="L62">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">toString</span>(self: IdeaProgress) []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L63">        <span class="tok-kw">return</span> string_representation[<span class="tok-builtin">@enumToInt</span>(self)];</span>
+<span class="line" id="L64">    }</span>
+<span class="line" id="L65"></span>
+<span class="line" id="L66">    <span class="tok-comment">/// Convert a string into it's enum representation, if exists</span></span>
+<span class="line" id="L67">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">fromString</span>(string: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) ?IdeaProgress {</span>
+<span class="line" id="L68">        <span class="tok-kw">for</span> (string_representation) |value, index| {</span>
+<span class="line" id="L69">            <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, string, value)) {</span>
+<span class="line" id="L70">                <span class="tok-kw">return</span> <span class="tok-builtin">@intToEnum</span>(IdeaProgress, index);</span>
+<span class="line" id="L71">            }</span>
+<span class="line" id="L72">        }</span>
+<span class="line" id="L73"></span>
+<span class="line" id="L74">        <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L75">    }</span>
+<span class="line" id="L76">};</span>
+<span class="line" id="L77"></span>
+<span class="line" id="L78"><span class="tok-comment">/// A struct for iterating over and querying stashed ideas</span></span>
+<span class="line" id="L79"><span class="tok-kw">const</span> IdeaIterator = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L80">    <span class="tok-comment">/// The IdeaBook that initialized this instance</span></span>
+<span class="line" id="L81">    parent: IdeaBook,</span>
+<span class="line" id="L82">    <span class="tok-comment">/// The highest id after which it should not search for any more ids, but return null</span></span>
+<span class="line" id="L83">    last_id: <span class="tok-type">usize</span>,</span>
+<span class="line" id="L84">    <span class="tok-comment">/// Current index, used for iterating using the method IdeaIterator.next</span></span>
+<span class="line" id="L85">    iterator_index: <span class="tok-type">usize</span> = <span class="tok-number">1</span>,</span>
+<span class="line" id="L86"></span>
+<span class="line" id="L87">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">next</span>(self: *IdeaIterator) IdeaBookError!?Idea {</span>
+<span class="line" id="L88">        <span class="tok-comment">// recursion, because I am lazy ;)</span>
+</span>
+<span class="line" id="L89">        <span class="tok-kw">if</span> (self.iterator_index &gt; self.last_id) <span class="tok-kw">return</span> <span class="tok-null">null</span>;</span>
+<span class="line" id="L90"></span>
+<span class="line" id="L91">        <span class="tok-kw">const</span> idea = self.parent.readIdea(self.parent.allocator, self.iterator_index) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L92">            <span class="tok-kw">error</span>.InvalidID =&gt; {</span>
+<span class="line" id="L93">                self.iterator_index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L94">                <span class="tok-kw">return</span> <span class="tok-kw">try</span> self.next();</span>
+<span class="line" id="L95">            },</span>
+<span class="line" id="L96">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> err,</span>
+<span class="line" id="L97">        };</span>
+<span class="line" id="L98"></span>
+<span class="line" id="L99">        self.iterator_index += <span class="tok-number">1</span>;</span>
+<span class="line" id="L100"></span>
+<span class="line" id="L101">        <span class="tok-kw">return</span> idea;</span>
+<span class="line" id="L102">    }</span>
+<span class="line" id="L103">};</span>
+<span class="line" id="L104"></span>
+<span class="line" id="L105"><span class="tok-comment">/// Error returned by struct Ideabook</span></span>
+<span class="line" id="L106"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IdeaBookError = <span class="tok-kw">error</span>{</span>
+<span class="line" id="L107">    <span class="tok-comment">/// Error while reading the lookup table</span></span>
+<span class="line" id="L108">    ReadTable,</span>
+<span class="line" id="L109">    <span class="tok-comment">/// Error while parsing the lookup table</span></span>
+<span class="line" id="L110">    ParsingTable,</span>
+<span class="line" id="L111">    <span class="tok-comment">/// Error while facing data that is not expected to be there</span></span>
+<span class="line" id="L112">    <span class="tok-comment">/// Might hint at a manually-edited lookup table</span></span>
+<span class="line" id="L113">    UnexpectedTable,</span>
+<span class="line" id="L114">    <span class="tok-comment">/// Error while exporting or writing the lookup table</span></span>
+<span class="line" id="L115">    WriteTable,</span>
+<span class="line" id="L116">    <span class="tok-comment">/// Error while trying to insert values into the lookup table</span></span>
+<span class="line" id="L117">    InsertTable,</span>
+<span class="line" id="L118">    <span class="tok-comment">/// Error storing the ideas content on-disk</span></span>
+<span class="line" id="L119">    StashContent,</span>
+<span class="line" id="L120">    <span class="tok-comment">/// Error following reference and reading its requested content</span></span>
+<span class="line" id="L121">    ReadContent,</span>
+<span class="line" id="L122">    <span class="tok-comment">/// Error deleting an on-disk idea's content</span></span>
+<span class="line" id="L123">    DeleteContent,</span>
+<span class="line" id="L124">    <span class="tok-comment">/// The requested idea does not exist</span></span>
+<span class="line" id="L125">    InvalidID,</span>
+<span class="line" id="L126">    <span class="tok-comment">/// A tag contains a character that is illegal, in this case a white-space</span></span>
+<span class="line" id="L127">    IllegalCharacterInTag,</span>
+<span class="line" id="L128">    <span class="tok-comment">/// Error deleting a directory</span></span>
+<span class="line" id="L129">    DeleteDirectory,</span>
+<span class="line" id="L130">    <span class="tok-comment">/// Not enough memory to store additional data</span></span>
+<span class="line" id="L131">    OutOfMemory,</span>
+<span class="line" id="L132">};</span>
+<span class="line" id="L133"></span>
+<span class="line" id="L134"><span class="tok-comment">/// A representation of on-disk notebooks, which contain ideas</span></span>
+<span class="line" id="L135"><span class="tok-kw">pub</span> <span class="tok-kw">const</span> IdeaBook = <span class="tok-kw">struct</span> {</span>
+<span class="line" id="L136">    <span class="tok-comment">/// Allocator used for buffering purposes</span></span>
+<span class="line" id="L137">    allocator: Allocator,</span>
+<span class="line" id="L138">    <span class="tok-comment">/// The Dir used for stashing ideas and storing the lookup table</span></span>
+<span class="line" id="L139">    root: std.fs.Dir,</span>
+<span class="line" id="L140">    <span class="tok-comment">/// The name of the file used for referencing ideas alongside other information (also referred to as lookup table)</span></span>
+<span class="line" id="L141">    table_basename: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>,</span>
+<span class="line" id="L142"></span>
+<span class="line" id="L143">    <span class="tok-comment">/// Convenience method to read and parse the lookup table</span></span>
+<span class="line" id="L144">    <span class="tok-kw">fn</span> <span class="tok-fn">readTable</span>(self: IdeaBook, allocator: Allocator) IdeaBookError!csv.Table {</span>
+<span class="line" id="L145">        <span class="tok-kw">var</span> table = csv.Table.init(allocator, csv.Settings.default());</span>
+<span class="line" id="L146">        <span class="tok-kw">const</span> stat = self.root.statFile(self.table_basename) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReadTable;</span>
+<span class="line" id="L147">        <span class="tok-kw">const</span> content = self.root.readFileAlloc(</span>
+<span class="line" id="L148">            table.arena_allocator.allocator(),</span>
+<span class="line" id="L149">            self.table_basename,</span>
+<span class="line" id="L150">            stat.size,</span>
+<span class="line" id="L151">        ) <span class="tok-kw">catch</span> |e| <span class="tok-kw">switch</span> (e) {</span>
+<span class="line" id="L152">            <span class="tok-kw">error</span>.OutOfMemory =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.OutOfMemory,</span>
+<span class="line" id="L153">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReadTable,</span>
+<span class="line" id="L154">        };</span>
+<span class="line" id="L155">        table.parse(content) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ParsingTable;</span>
+<span class="line" id="L156">        <span class="tok-kw">return</span> table;</span>
+<span class="line" id="L157">    }</span>
+<span class="line" id="L158"></span>
+<span class="line" id="L159">    <span class="tok-comment">/// Convenience method to export and write the lookup table</span></span>
+<span class="line" id="L160">    <span class="tok-kw">fn</span> <span class="tok-fn">writeTable</span>(self: IdeaBook, table: *csv.Table) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L161">        <span class="tok-kw">const</span> csv_exported = table.exportCSV(self.allocator) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.WriteTable;</span>
+<span class="line" id="L162">        <span class="tok-kw">defer</span> self.allocator.free(csv_exported);</span>
+<span class="line" id="L163">        self.root.writeFile(self.table_basename, csv_exported) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.WriteTable;</span>
+<span class="line" id="L164">    }</span>
+<span class="line" id="L165"></span>
+<span class="line" id="L166">    <span class="tok-comment">/// Calculate a path via the content's hash that will be used as the idea's reference</span></span>
+<span class="line" id="L167">    <span class="tok-kw">fn</span> <span class="tok-fn">pathFromContent</span>(allocator: Allocator, content: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) IdeaBookError![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L168">        <span class="tok-kw">var</span> hash: [<span class="tok-number">32</span>]<span class="tok-type">u8</span> = <span class="tok-null">undefined</span>;</span>
+<span class="line" id="L169">        Sha256.hash(content, &amp;hash, .{});</span>
+<span class="line" id="L170"></span>
+<span class="line" id="L171">        <span class="tok-comment">// TODO: replace with std.fmt.bytesToHex in the future</span>
+</span>
+<span class="line" id="L172">        <span class="tok-kw">var</span> path = ArrayList(<span class="tok-type">u8</span>).init(allocator);</span>
+<span class="line" id="L173">        <span class="tok-kw">const</span> path_writer = path.writer();</span>
+<span class="line" id="L174"></span>
+<span class="line" id="L175">        <span class="tok-kw">try</span> std.fmt.fmtSliceHexLower(hash[<span class="tok-number">0</span>..<span class="tok-number">1</span>]).format(&amp;.{}, .{}, path_writer);</span>
+<span class="line" id="L176">        <span class="tok-kw">try</span> path.appendSlice(<span class="tok-str">&quot;/&quot;</span>);</span>
+<span class="line" id="L177">        <span class="tok-kw">try</span> std.fmt.fmtSliceHexLower(hash[<span class="tok-number">1</span>..<span class="tok-number">32</span>]).format(&amp;.{}, .{}, path_writer);</span>
+<span class="line" id="L178"></span>
+<span class="line" id="L179">        <span class="tok-kw">return</span> path.toOwnedSlice();</span>
+<span class="line" id="L180">    }</span>
+<span class="line" id="L181"></span>
+<span class="line" id="L182">    <span class="tok-comment">/// Return a slice of references to all existing on-disk ideas</span></span>
+<span class="line" id="L183">    <span class="tok-kw">fn</span> <span class="tok-fn">pathsOfContents</span>(self: IdeaBook, allocator: Allocator) IdeaBookError![]<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L184">        <span class="tok-kw">var</span> references = ArrayList([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>).init(allocator);</span>
+<span class="line" id="L185"></span>
+<span class="line" id="L186">        <span class="tok-kw">var</span> dir = self.root.openIterableDir(<span class="tok-str">&quot;.&quot;</span>, .{}) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReadContent;</span>
+<span class="line" id="L187">        <span class="tok-kw">defer</span> dir.close();</span>
+<span class="line" id="L188"></span>
+<span class="line" id="L189">        <span class="tok-comment">// the only error that should be able to return is OutOfMemory, since only Allocator.Error is returnable and it is the only field</span>
+</span>
+<span class="line" id="L190">        <span class="tok-kw">var</span> walker = dir.walk(self.allocator) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.OutOfMemory;</span>
+<span class="line" id="L191">        <span class="tok-kw">defer</span> walker.deinit();</span>
+<span class="line" id="L192"></span>
+<span class="line" id="L193">        <span class="tok-kw">while</span> (walker.next() <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReadContent) |entry| {</span>
+<span class="line" id="L194">            <span class="tok-comment">// check for len 2 basename, since the path is calculated from the content's hash and</span>
+</span>
+<span class="line" id="L195">            <span class="tok-comment">// has a static size of 62 (file name) + 2 (dir name) = 64 c</span>
+</span>
+<span class="line" id="L196">            <span class="tok-kw">if</span> (entry.kind == .File <span class="tok-kw">and</span> entry.basename.len == <span class="tok-number">62</span>) {</span>
+<span class="line" id="L197">                <span class="tok-kw">try</span> references.append(<span class="tok-kw">try</span> allocator.dupe(<span class="tok-type">u8</span>, entry.path));</span>
+<span class="line" id="L198">            }</span>
+<span class="line" id="L199">        }</span>
+<span class="line" id="L200"></span>
+<span class="line" id="L201">        <span class="tok-kw">return</span> references.toOwnedSlice();</span>
+<span class="line" id="L202">    }</span>
+<span class="line" id="L203"></span>
+<span class="line" id="L204">    <span class="tok-comment">/// Store the content of an idea on-disk inside of self.root, returning the content's reference</span></span>
+<span class="line" id="L205">    <span class="tok-kw">fn</span> <span class="tok-fn">stashContent</span>(self: IdeaBook, allocator: Allocator, idea_content: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) IdeaBookError![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L206">        <span class="tok-kw">const</span> path = <span class="tok-kw">try</span> IdeaBook.pathFromContent(allocator, idea_content);</span>
+<span class="line" id="L207"></span>
+<span class="line" id="L208">        self.root.makeDir(std.fs.path.dirname(path).?) <span class="tok-kw">catch</span> |err| <span class="tok-kw">switch</span> (err) {</span>
+<span class="line" id="L209">            <span class="tok-kw">error</span>.PathAlreadyExists =&gt; {},</span>
+<span class="line" id="L210">            <span class="tok-kw">else</span> =&gt; {</span>
+<span class="line" id="L211">                <span class="tok-kw">return</span> <span class="tok-kw">error</span>.StashContent;</span>
+<span class="line" id="L212">            },</span>
+<span class="line" id="L213">        };</span>
+<span class="line" id="L214"></span>
+<span class="line" id="L215">        <span class="tok-kw">if</span> (self.root.access(path, .{}) == <span class="tok-kw">error</span>.FileNotFound) {</span>
+<span class="line" id="L216">            <span class="tok-kw">var</span> file = self.root.createFile(path, .{}) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.StashContent;</span>
+<span class="line" id="L217">            <span class="tok-kw">defer</span> file.close();</span>
+<span class="line" id="L218">            file.writeAll(idea_content) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.StashContent;</span>
+<span class="line" id="L219">        }</span>
+<span class="line" id="L220"></span>
+<span class="line" id="L221">        <span class="tok-kw">return</span> path;</span>
+<span class="line" id="L222">    }</span>
+<span class="line" id="L223"></span>
+<span class="line" id="L224">    <span class="tok-comment">/// Follow an idea's reference and read the idea's content</span></span>
+<span class="line" id="L225">    <span class="tok-kw">fn</span> <span class="tok-fn">readContentFromReference</span>(self: IdeaBook, allocator: Allocator, reference: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) IdeaBookError![]<span class="tok-kw">const</span> <span class="tok-type">u8</span> {</span>
+<span class="line" id="L226">        <span class="tok-kw">const</span> stat = self.root.statFile(reference) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReadContent;</span>
+<span class="line" id="L227">        <span class="tok-kw">return</span> self.root.readFileAlloc(</span>
+<span class="line" id="L228">            allocator,</span>
+<span class="line" id="L229">            reference,</span>
+<span class="line" id="L230">            stat.size,</span>
+<span class="line" id="L231">        ) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ReadContent;</span>
+<span class="line" id="L232">    }</span>
+<span class="line" id="L233"></span>
+<span class="line" id="L234">    <span class="tok-comment">/// Calculate the next unique ID that is available for use within the lookup table</span></span>
+<span class="line" id="L235">    <span class="tok-kw">fn</span> <span class="tok-fn">nextID</span>(self: IdeaBook) IdeaBookError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L236">        <span class="tok-kw">var</span> table = <span class="tok-kw">try</span> self.readTable(self.allocator);</span>
+<span class="line" id="L237">        <span class="tok-kw">defer</span> table.deinit();</span>
+<span class="line" id="L238"></span>
+<span class="line" id="L239">        <span class="tok-kw">const</span> column_index_ids = table.findColumnIndexesByKey(self.allocator, <span class="tok-str">&quot;id&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L240">        <span class="tok-kw">defer</span> self.allocator.free(column_index_ids);</span>
+<span class="line" id="L241"></span>
+<span class="line" id="L242">        <span class="tok-kw">var</span> ids = table.getColumnByIndex(column_index_ids[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L243">        <span class="tok-kw">var</span> last_id: <span class="tok-type">usize</span> = <span class="tok-number">0</span>;</span>
+<span class="line" id="L244"></span>
+<span class="line" id="L245">        <span class="tok-kw">while</span> (ids.next()) |id_item| {</span>
+<span class="line" id="L246">            <span class="tok-kw">const</span> id = std.fmt.parseInt(<span class="tok-type">usize</span>, id_item.value, <span class="tok-number">10</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L247">            <span class="tok-kw">if</span> (id &gt; last_id) last_id = id;</span>
+<span class="line" id="L248">        }</span>
+<span class="line" id="L249"></span>
+<span class="line" id="L250">        <span class="tok-kw">return</span> last_id + <span class="tok-number">1</span>;</span>
+<span class="line" id="L251">    }</span>
+<span class="line" id="L252"></span>
+<span class="line" id="L253">    <span class="tok-comment">/// Push a new entry to the lookup table</span></span>
+<span class="line" id="L254">    <span class="tok-kw">fn</span> <span class="tok-fn">pushTableEntry</span>(self: IdeaBook, idea: <span class="tok-kw">anytype</span>) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L255">        <span class="tok-kw">if</span> (<span class="tok-builtin">@TypeOf</span>(idea.progress) != IdeaProgress) <span class="tok-builtin">@compileError</span>(<span class="tok-str">&quot;Expected IdeaProgress&quot;</span>);</span>
+<span class="line" id="L256">        <span class="tok-kw">for</span> (idea.tags) |tag| <span class="tok-kw">if</span> (std.mem.count(<span class="tok-type">u8</span>, tag, <span class="tok-str">&quot; &quot;</span>) != <span class="tok-number">0</span>) <span class="tok-kw">return</span> <span class="tok-kw">error</span>.IllegalCharacterInTag;</span>
+<span class="line" id="L257"></span>
+<span class="line" id="L258">        <span class="tok-kw">var</span> arena = std.heap.ArenaAllocator.init(self.allocator);</span>
+<span class="line" id="L259">        <span class="tok-kw">const</span> allocator = arena.allocator();</span>
+<span class="line" id="L260">        <span class="tok-kw">defer</span> arena.deinit();</span>
+<span class="line" id="L261"></span>
+<span class="line" id="L262">        <span class="tok-kw">var</span> table = <span class="tok-kw">try</span> self.readTable(self.allocator);</span>
+<span class="line" id="L263">        <span class="tok-kw">defer</span> table.deinit();</span>
+<span class="line" id="L264"></span>
+<span class="line" id="L265">        <span class="tok-kw">const</span> column_index_id = table.findColumnIndexesByKey(allocator, <span class="tok-str">&quot;id&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L266">        <span class="tok-kw">const</span> column_index_reference = table.findColumnIndexesByKey(allocator, <span class="tok-str">&quot;reference&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L267">        <span class="tok-kw">const</span> column_index_title = table.findColumnIndexesByKey(allocator, <span class="tok-str">&quot;title&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L268">        <span class="tok-kw">const</span> column_index_progress = table.findColumnIndexesByKey(allocator, <span class="tok-str">&quot;progress&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L269">        <span class="tok-kw">const</span> column_index_tags = table.findColumnIndexesByKey(allocator, <span class="tok-str">&quot;tags&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L270"></span>
+<span class="line" id="L271">        <span class="tok-kw">const</span> formated_id = <span class="tok-kw">try</span> std.fmt.allocPrint(allocator, <span class="tok-str">&quot;{d}&quot;</span>, .{idea.id});</span>
+<span class="line" id="L272">        <span class="tok-kw">const</span> formated_tags = <span class="tok-kw">try</span> std.mem.join(allocator, <span class="tok-str">&quot; &quot;</span>, idea.tags);</span>
+<span class="line" id="L273"></span>
+<span class="line" id="L274">        <span class="tok-comment">// returns OutOfMemory because it is the only possible returning type, even though more errors are listed</span>
+</span>
+<span class="line" id="L275">        <span class="tok-kw">const</span> row_index = table.insertEmptyRow() <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.OutOfMemory;</span>
+<span class="line" id="L276">        table.replaceValue(row_index, column_index_id[<span class="tok-number">0</span>], formated_id) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L277">        table.replaceValue(row_index, column_index_reference[<span class="tok-number">0</span>], idea.reference) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L278">        table.replaceValue(row_index, column_index_title[<span class="tok-number">0</span>], idea.title) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L279">        table.replaceValue(row_index, column_index_progress[<span class="tok-number">0</span>], idea.progress.toString()) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L280">        table.replaceValue(row_index, column_index_tags[<span class="tok-number">0</span>], formated_tags) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L281"></span>
+<span class="line" id="L282">        <span class="tok-kw">try</span> self.writeTable(&amp;table);</span>
+<span class="line" id="L283">    }</span>
+<span class="line" id="L284"></span>
+<span class="line" id="L285">    <span class="tok-comment">/// Pop the entry with the provided ID of the lookup table</span></span>
+<span class="line" id="L286">    <span class="tok-kw">fn</span> <span class="tok-fn">popTableEntry</span>(self: IdeaBook, idea_id: <span class="tok-type">usize</span>) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L287">        <span class="tok-kw">var</span> arena = std.heap.ArenaAllocator.init(self.allocator);</span>
+<span class="line" id="L288">        <span class="tok-kw">defer</span> arena.deinit();</span>
+<span class="line" id="L289">        <span class="tok-kw">const</span> allocator = arena.allocator();</span>
+<span class="line" id="L290"></span>
+<span class="line" id="L291">        <span class="tok-kw">var</span> table = <span class="tok-kw">try</span> self.readTable(allocator);</span>
+<span class="line" id="L292"></span>
+<span class="line" id="L293">        <span class="tok-kw">const</span> formated_id = <span class="tok-kw">try</span> std.fmt.allocPrint(allocator, <span class="tok-str">&quot;{d}&quot;</span>, .{idea_id});</span>
+<span class="line" id="L294">        <span class="tok-kw">const</span> column_index = table.findColumnIndexesByKey(allocator, <span class="tok-str">&quot;id&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L295">        <span class="tok-kw">const</span> row_index = table.findRowIndexesByValue(allocator, column_index[<span class="tok-number">0</span>], formated_id) <span class="tok-kw">catch</span> |e| <span class="tok-kw">switch</span> (e) {</span>
+<span class="line" id="L296">            <span class="tok-kw">error</span>.RowNotFound =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidID,</span>
+<span class="line" id="L297">            <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable,</span>
+<span class="line" id="L298">        };</span>
+<span class="line" id="L299"></span>
+<span class="line" id="L300">        table.deleteRowByIndex(row_index[<span class="tok-number">0</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.ParsingTable;</span>
+<span class="line" id="L301"></span>
+<span class="line" id="L302">        <span class="tok-kw">try</span> self.writeTable(&amp;table);</span>
+<span class="line" id="L303">    }</span>
+<span class="line" id="L304"></span>
+<span class="line" id="L305">    <span class="tok-comment">/// Delete all on-disk contents that are not referenced by the lookup table</span></span>
+<span class="line" id="L306">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">cleanInvalidReferences</span>(self: IdeaBook) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L307">        <span class="tok-kw">var</span> arena = std.heap.ArenaAllocator.init(self.allocator);</span>
+<span class="line" id="L308">        <span class="tok-kw">defer</span> arena.deinit();</span>
+<span class="line" id="L309">        <span class="tok-kw">const</span> allocator = arena.allocator();</span>
+<span class="line" id="L310"></span>
+<span class="line" id="L311">        <span class="tok-kw">var</span> table = <span class="tok-kw">try</span> self.readTable(allocator);</span>
+<span class="line" id="L312">        <span class="tok-kw">const</span> column_index = table.findColumnIndexesByKey(allocator, <span class="tok-str">&quot;reference&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L313"></span>
+<span class="line" id="L314">        <span class="tok-kw">var</span> recorded_refs = table.getColumnByIndex(column_index[<span class="tok-number">0</span>]);</span>
+<span class="line" id="L315">        <span class="tok-kw">const</span> stored_refs = <span class="tok-kw">try</span> self.pathsOfContents(allocator);</span>
+<span class="line" id="L316"></span>
+<span class="line" id="L317">        <span class="tok-kw">for</span> (stored_refs) |stored_ref| {</span>
+<span class="line" id="L318">            <span class="tok-kw">var</span> exists_in_lookup = <span class="tok-null">false</span>;</span>
+<span class="line" id="L319"></span>
+<span class="line" id="L320">            recorded_refs.reset();</span>
+<span class="line" id="L321">            <span class="tok-kw">while</span> (recorded_refs.next()) |recorded_ref| {</span>
+<span class="line" id="L322">                <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, stored_ref, recorded_ref.value)) exists_in_lookup = <span class="tok-null">true</span>;</span>
+<span class="line" id="L323">            }</span>
+<span class="line" id="L324"></span>
+<span class="line" id="L325">            <span class="tok-kw">if</span> (!exists_in_lookup) {</span>
+<span class="line" id="L326">                <span class="tok-comment">// this code should not fail, since all references have a dirname and a basename</span>
+</span>
+<span class="line" id="L327">                <span class="tok-kw">const</span> dirname = std.fs.path.dirname(stored_ref) <span class="tok-kw">orelse</span> <span class="tok-kw">unreachable</span>;</span>
+<span class="line" id="L328"></span>
+<span class="line" id="L329">                self.root.deleteFile(stored_ref) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DeleteContent;</span>
+<span class="line" id="L330">                self.root.deleteDir(dirname) <span class="tok-kw">catch</span> |e| <span class="tok-kw">switch</span> (e) {</span>
+<span class="line" id="L331">                    <span class="tok-kw">error</span>.DirNotEmpty =&gt; {}, <span class="tok-comment">// ignore, since the still includes files</span>
+</span>
+<span class="line" id="L332">                    <span class="tok-kw">else</span> =&gt; <span class="tok-kw">return</span> <span class="tok-kw">error</span>.DeleteDirectory, <span class="tok-comment">// delete obsolete directory</span>
+</span>
+<span class="line" id="L333">                };</span>
+<span class="line" id="L334">            }</span>
+<span class="line" id="L335">        }</span>
+<span class="line" id="L336">    }</span>
+<span class="line" id="L337"></span>
+<span class="line" id="L338">    <span class="tok-comment">/// Initialize the lookup table for new IdeaBooks</span></span>
+<span class="line" id="L339">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">initializeTable</span>(self: IdeaBook) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L340">        <span class="tok-kw">var</span> table = csv.Table.init(self.allocator, csv.Settings.default());</span>
+<span class="line" id="L341">        <span class="tok-kw">defer</span> table.deinit();</span>
+<span class="line" id="L342"></span>
+<span class="line" id="L343">        _ = table.insertEmptyColumn(<span class="tok-str">&quot;id&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L344">        _ = table.insertEmptyColumn(<span class="tok-str">&quot;reference&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L345">        _ = table.insertEmptyColumn(<span class="tok-str">&quot;title&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L346">        _ = table.insertEmptyColumn(<span class="tok-str">&quot;progress&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L347">        _ = table.insertEmptyColumn(<span class="tok-str">&quot;tags&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InsertTable;</span>
+<span class="line" id="L348"></span>
+<span class="line" id="L349">        <span class="tok-kw">if</span> (self.root.access(self.table_basename, .{}) == <span class="tok-kw">error</span>.FileNotFound) {</span>
+<span class="line" id="L350">            <span class="tok-kw">try</span> self.writeTable(&amp;table);</span>
+<span class="line" id="L351">        }</span>
+<span class="line" id="L352">    }</span>
+<span class="line" id="L353"></span>
+<span class="line" id="L354">    <span class="tok-comment">/// Retrieve the idea with the provided ID</span></span>
+<span class="line" id="L355">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">readIdea</span>(self: IdeaBook, allocator: Allocator, idea_id: <span class="tok-type">usize</span>) IdeaBookError!Idea {</span>
+<span class="line" id="L356">        <span class="tok-kw">const</span> formated_id = <span class="tok-kw">try</span> std.fmt.allocPrint(self.allocator, <span class="tok-str">&quot;{d}&quot;</span>, .{idea_id});</span>
+<span class="line" id="L357">        <span class="tok-kw">defer</span> self.allocator.free(formated_id);</span>
+<span class="line" id="L358"></span>
+<span class="line" id="L359">        <span class="tok-kw">var</span> table = <span class="tok-kw">try</span> self.readTable(self.allocator);</span>
+<span class="line" id="L360">        <span class="tok-kw">defer</span> table.deinit();</span>
+<span class="line" id="L361">        <span class="tok-kw">var</span> rows = table.getAllRows();</span>
+<span class="line" id="L362"></span>
+<span class="line" id="L363">        <span class="tok-kw">var</span> arena = std.heap.ArenaAllocator.init(self.allocator);</span>
+<span class="line" id="L364">        <span class="tok-kw">defer</span> arena.deinit();</span>
+<span class="line" id="L365">        <span class="tok-kw">const</span> column_allocator = arena.allocator();</span>
+<span class="line" id="L366"></span>
+<span class="line" id="L367">        <span class="tok-kw">const</span> column_index_id = table.findColumnIndexesByKey(column_allocator, <span class="tok-str">&quot;id&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L368">        <span class="tok-kw">const</span> column_index_reference = table.findColumnIndexesByKey(column_allocator, <span class="tok-str">&quot;reference&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L369">        <span class="tok-kw">const</span> column_index_title = table.findColumnIndexesByKey(column_allocator, <span class="tok-str">&quot;title&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L370">        <span class="tok-kw">const</span> column_index_progress = table.findColumnIndexesByKey(column_allocator, <span class="tok-str">&quot;progress&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L371">        <span class="tok-kw">const</span> column_index_tags = table.findColumnIndexesByKey(column_allocator, <span class="tok-str">&quot;tags&quot;</span>) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable;</span>
+<span class="line" id="L372"></span>
+<span class="line" id="L373">        <span class="tok-kw">while</span> (<span class="tok-null">true</span>) { <span class="tok-comment">// row may not be *const, thus this approach</span>
+</span>
+<span class="line" id="L374">            <span class="tok-kw">var</span> row = rows.next() <span class="tok-kw">orelse</span> <span class="tok-kw">break</span>;</span>
+<span class="line" id="L375"></span>
+<span class="line" id="L376">            <span class="tok-kw">const</span> row_value_id = (row.get(column_index_id[<span class="tok-number">0</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable).value;</span>
+<span class="line" id="L377"></span>
+<span class="line" id="L378">            <span class="tok-kw">if</span> (std.mem.eql(<span class="tok-type">u8</span>, formated_id, row_value_id)) {</span>
+<span class="line" id="L379">                <span class="tok-kw">const</span> row_value_reference = (row.get(column_index_reference[<span class="tok-number">0</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable).value;</span>
+<span class="line" id="L380">                <span class="tok-kw">const</span> row_value_title = (row.get(column_index_title[<span class="tok-number">0</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable).value;</span>
+<span class="line" id="L381">                <span class="tok-kw">const</span> row_value_progress = (row.get(column_index_progress[<span class="tok-number">0</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable).value;</span>
+<span class="line" id="L382">                <span class="tok-kw">const</span> row_value_tags = (row.get(column_index_tags[<span class="tok-number">0</span>]) <span class="tok-kw">catch</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable).value;</span>
+<span class="line" id="L383"></span>
+<span class="line" id="L384">                <span class="tok-comment">// convert table representation of tags into []const u8</span>
+</span>
+<span class="line" id="L385">                <span class="tok-kw">var</span> tags_iterator = std.mem.split(<span class="tok-type">u8</span>, row_value_tags, <span class="tok-str">&quot; &quot;</span>);</span>
+<span class="line" id="L386">                <span class="tok-kw">var</span> tags = ArrayList([]<span class="tok-kw">const</span> <span class="tok-type">u8</span>).init(allocator);</span>
+<span class="line" id="L387">                <span class="tok-kw">while</span> (tags_iterator.next()) |tag| <span class="tok-kw">if</span> (tag.len != <span class="tok-number">0</span>) {</span>
+<span class="line" id="L388">                    <span class="tok-kw">try</span> tags.append(<span class="tok-kw">try</span> allocator.dupe(<span class="tok-type">u8</span>, tag));</span>
+<span class="line" id="L389">                };</span>
+<span class="line" id="L390"></span>
+<span class="line" id="L391">                <span class="tok-kw">return</span> Idea{</span>
+<span class="line" id="L392">                    .allocator = allocator,</span>
+<span class="line" id="L393">                    .id = idea_id,</span>
+<span class="line" id="L394">                    .title = <span class="tok-kw">try</span> allocator.dupe(<span class="tok-type">u8</span>, row_value_title),</span>
+<span class="line" id="L395">                    .reference = <span class="tok-kw">try</span> allocator.dupe(<span class="tok-type">u8</span>, row_value_reference),</span>
+<span class="line" id="L396">                    .content = <span class="tok-kw">try</span> self.readContentFromReference(allocator, row_value_reference),</span>
+<span class="line" id="L397">                    .progress = IdeaProgress.fromString(row_value_progress) <span class="tok-kw">orelse</span> <span class="tok-kw">return</span> <span class="tok-kw">error</span>.UnexpectedTable,</span>
+<span class="line" id="L398">                    .tags = tags.toOwnedSlice(),</span>
+<span class="line" id="L399">                };</span>
+<span class="line" id="L400">            }</span>
+<span class="line" id="L401">        }</span>
+<span class="line" id="L402"></span>
+<span class="line" id="L403">        <span class="tok-kw">return</span> <span class="tok-kw">error</span>.InvalidID;</span>
+<span class="line" id="L404">    }</span>
+<span class="line" id="L405"></span>
+<span class="line" id="L406">    <span class="tok-comment">/// Add an idea to the on-disk IdeaBook, returning the idea's ID</span></span>
+<span class="line" id="L407">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">addIdea</span>(self: IdeaBook, idea: <span class="tok-kw">anytype</span>) IdeaBookError!<span class="tok-type">usize</span> {</span>
+<span class="line" id="L408">        <span class="tok-kw">const</span> idea_reference = <span class="tok-kw">try</span> self.stashContent(self.allocator, idea.content);</span>
+<span class="line" id="L409">        <span class="tok-kw">defer</span> self.allocator.free(idea_reference);</span>
+<span class="line" id="L410"></span>
+<span class="line" id="L411">        <span class="tok-kw">const</span> idea_id = <span class="tok-kw">try</span> self.nextID();</span>
+<span class="line" id="L412"></span>
+<span class="line" id="L413">        <span class="tok-kw">try</span> self.pushTableEntry(.{</span>
+<span class="line" id="L414">            .id = idea_id,</span>
+<span class="line" id="L415">            .title = idea.title,</span>
+<span class="line" id="L416">            .reference = idea_reference,</span>
+<span class="line" id="L417">            .progress = idea.progress,</span>
+<span class="line" id="L418">            .tags = idea.tags,</span>
+<span class="line" id="L419">        });</span>
+<span class="line" id="L420"></span>
+<span class="line" id="L421">        <span class="tok-kw">return</span> idea_id;</span>
+<span class="line" id="L422">    }</span>
+<span class="line" id="L423"></span>
+<span class="line" id="L424">    <span class="tok-comment">/// Remove an idea from the lookup table, leaving invalid references behind</span></span>
+<span class="line" id="L425">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">removeIdea</span>(self: IdeaBook, idea_id: <span class="tok-type">usize</span>) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L426">        <span class="tok-kw">try</span> self.popTableEntry(idea_id);</span>
+<span class="line" id="L427">    }</span>
+<span class="line" id="L428"></span>
+<span class="line" id="L429">    <span class="tok-comment">/// Replace the title of an existing idea with a new title</span></span>
+<span class="line" id="L430">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">editIdeaTitle</span>(self: IdeaBook, idea_id: <span class="tok-type">usize</span>, new_idea_title: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L431">        <span class="tok-kw">const</span> idea = <span class="tok-kw">try</span> self.readIdea(self.allocator, idea_id);</span>
+<span class="line" id="L432">        <span class="tok-kw">defer</span> idea.deinit();</span>
+<span class="line" id="L433"></span>
+<span class="line" id="L434">        <span class="tok-kw">try</span> self.popTableEntry(idea_id);</span>
+<span class="line" id="L435">        <span class="tok-kw">try</span> self.pushTableEntry(.{</span>
+<span class="line" id="L436">            .id = idea.id,</span>
+<span class="line" id="L437">            .title = new_idea_title,</span>
+<span class="line" id="L438">            .reference = idea.reference,</span>
+<span class="line" id="L439">            .progress = idea.progress,</span>
+<span class="line" id="L440">            .tags = idea.tags,</span>
+<span class="line" id="L441">        });</span>
+<span class="line" id="L442">    }</span>
+<span class="line" id="L443"></span>
+<span class="line" id="L444">    <span class="tok-comment">/// Replace the content of an existing idea with a new content, storing it on-disk</span></span>
+<span class="line" id="L445">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">editIdeaContent</span>(self: IdeaBook, idea_id: <span class="tok-type">usize</span>, new_idea_content: []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L446">        <span class="tok-kw">const</span> idea = <span class="tok-kw">try</span> self.readIdea(self.allocator, idea_id);</span>
+<span class="line" id="L447">        <span class="tok-kw">defer</span> idea.deinit();</span>
+<span class="line" id="L448"></span>
+<span class="line" id="L449">        <span class="tok-kw">const</span> idea_reference = <span class="tok-kw">try</span> self.stashContent(self.allocator, new_idea_content);</span>
+<span class="line" id="L450">        <span class="tok-kw">defer</span> self.allocator.free(idea_reference);</span>
+<span class="line" id="L451"></span>
+<span class="line" id="L452">        <span class="tok-kw">try</span> self.popTableEntry(idea_id);</span>
+<span class="line" id="L453">        <span class="tok-kw">try</span> self.pushTableEntry(.{</span>
+<span class="line" id="L454">            .id = idea.id,</span>
+<span class="line" id="L455">            .title = idea.title,</span>
+<span class="line" id="L456">            .reference = idea_reference,</span>
+<span class="line" id="L457">            .progress = idea.progress,</span>
+<span class="line" id="L458">            .tags = idea.tags,</span>
+<span class="line" id="L459">        });</span>
+<span class="line" id="L460">    }</span>
+<span class="line" id="L461"></span>
+<span class="line" id="L462">    <span class="tok-comment">/// Replace the progress of an existing idea with an updated progress state</span></span>
+<span class="line" id="L463">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">editIdeaProgress</span>(self: IdeaBook, idea_id: <span class="tok-type">usize</span>, new_idea_progress: IdeaProgress) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L464">        <span class="tok-kw">const</span> idea = <span class="tok-kw">try</span> self.readIdea(self.allocator, idea_id);</span>
+<span class="line" id="L465">        <span class="tok-kw">defer</span> idea.deinit();</span>
+<span class="line" id="L466"></span>
+<span class="line" id="L467">        <span class="tok-kw">try</span> self.popTableEntry(idea_id);</span>
+<span class="line" id="L468">        <span class="tok-kw">try</span> self.pushTableEntry(.{</span>
+<span class="line" id="L469">            .id = idea.id,</span>
+<span class="line" id="L470">            .title = idea.title,</span>
+<span class="line" id="L471">            .reference = idea.reference,</span>
+<span class="line" id="L472">            .progress = new_idea_progress,</span>
+<span class="line" id="L473">            .tags = idea.tags,</span>
+<span class="line" id="L474">        });</span>
+<span class="line" id="L475">    }</span>
+<span class="line" id="L476"></span>
+<span class="line" id="L477">    <span class="tok-comment">/// Replace the tags of an existing idea with new tags</span></span>
+<span class="line" id="L478">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">editIdeaTags</span>(self: IdeaBook, idea_id: <span class="tok-type">usize</span>, new_idea_tags: []<span class="tok-kw">const</span> []<span class="tok-kw">const</span> <span class="tok-type">u8</span>) IdeaBookError!<span class="tok-type">void</span> {</span>
+<span class="line" id="L479">        <span class="tok-kw">const</span> idea = <span class="tok-kw">try</span> self.readIdea(self.allocator, idea_id);</span>
+<span class="line" id="L480">        <span class="tok-kw">defer</span> idea.deinit();</span>
+<span class="line" id="L481"></span>
+<span class="line" id="L482">        <span class="tok-kw">try</span> self.popTableEntry(idea_id);</span>
+<span class="line" id="L483">        <span class="tok-kw">try</span> self.pushTableEntry(.{</span>
+<span class="line" id="L484">            .id = idea.id,</span>
+<span class="line" id="L485">            .title = idea.title,</span>
+<span class="line" id="L486">            .reference = idea.reference,</span>
+<span class="line" id="L487">            .progress = idea.progress,</span>
+<span class="line" id="L488">            .tags = new_idea_tags,</span>
+<span class="line" id="L489">        });</span>
+<span class="line" id="L490">    }</span>
+<span class="line" id="L491"></span>
+<span class="line" id="L492">    <span class="tok-comment">/// Return an IdeaIterator that provides methods for querying and iterating over the stashed ideas</span></span>
+<span class="line" id="L493">    <span class="tok-kw">pub</span> <span class="tok-kw">fn</span> <span class="tok-fn">iterateIdeas</span>(self: IdeaBook) IdeaBookError!IdeaIterator {</span>
+<span class="line" id="L494">        <span class="tok-kw">return</span> IdeaIterator{</span>
+<span class="line" id="L495">            .parent = self,</span>
+<span class="line" id="L496">            .last_id = <span class="tok-kw">try</span> self.nextID() - <span class="tok-number">1</span>,</span>
+<span class="line" id="L497">        };</span>
+<span class="line" id="L498">    }</span>
+<span class="line" id="L499">};</span>
+<span class="line" id="L500"></span>
+</code></pre></body>
+</html>

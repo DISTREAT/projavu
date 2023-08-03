@@ -1,0 +1,12 @@
+[submodule "lib/zig-csv"]
+	path = lib/zig-csv
+	url = https://github.com/DISTREAT/zig-csv
+[submodule "lib/zig-argtic"]
+	path = lib/zig-argtic
+	url = https://github.com/DISTREAT/zig-argtic
+[submodule "lib/ctable"]
+	path = lib/ctable
+	url = https://github.com/PHochmann/ctable
+[submodule "lib/levenshtein.c"]
+	path = lib/levenshtein.c
+	url = https://github.com/wooorm/levenshtein.c
