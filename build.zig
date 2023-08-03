@@ -48,13 +48,9 @@ pub fn build(b: *std.build.Builder) void {
         exe_run.addArgs(args);
     }
 
-    const lib_step = b.step("lib", "Build the library");
     const tests_step = b.step("test", "Run all unit tests");
-    const exe_step = b.step("exe", "Build the executable");
     const exe_run_step = b.step("run", "Run the executable");
 
-    lib_step.dependOn(&lib.step);
     tests_step.dependOn(&tests.step);
-    exe_step.dependOn(&exe.step);
     exe_run_step.dependOn(&exe_run.step);
 }
