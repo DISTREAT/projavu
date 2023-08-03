@@ -256,7 +256,21 @@ fn cliAddIdea(allocator: Allocator, ideabook: projavu.IdeaBook, arguments: argti
 
 // Open a text editor for user input
 fn textEditor(allocator: Allocator, placeholder_text: []const u8) CliError!?[]const u8 {
-    var temporary_dir = std.testing.tmpDir(.{});
+    // adapted from std library
+    const random_bytes_count = 12;
+    const sub_path_len = comptime std.fs.base64_encoder.calcSize(random_bytes_count);
+
+    var random_bytes: [random_bytes_count]u8 = undefined;
+    std.crypto.random.bytes(&random_bytes);
+    var sub_path: [sub_path_len]u8 = undefined;
+    _ = std.fs.base64_encoder.encode(&sub_path, &random_bytes);
+
+    var root_tmp_dir = std.fs.openDirAbsolute("/tmp", .{}) catch return error.TmpDirCreate;
+    var temporary_dir = std.testing.TmpDir{
+        .dir = root_tmp_dir.makeOpenPath(&sub_path, .{}) catch return error.TmpDirCreate,
+        .parent_dir = root_tmp_dir,
+        .sub_path = sub_path,
+    };
 
     const temporary_file_basename = "tmp";
 
@@ -520,6 +534,7 @@ const CliError = error{
     MissingEnvironmentVariableXDGDataHome,
     MissingEnvironmentVariableEDITOR,
     OpenEditor,
+    TmpDirCreate,
     TmpFileCreate,
     TmpFileRead,
     StashIdea,
@@ -559,6 +574,7 @@ fn errorHandler(cli_error: CliError) void {
         error.MissingEnvironmentVariableXDGDataHome => std.log.err("the environment variable $XDG_DATA_HOME is required, but not provided", .{}),
         error.MissingEnvironmentVariableEDITOR => std.log.err("the environment variable $EDITOR is required, but not provided", .{}),
         error.OpenEditor => std.log.err("could not spawn an editor for editing an idea", .{}),
+        error.TmpDirCreate => std.log.err("could not create a new temporary directory", .{}),
         error.TmpFileCreate => std.log.err("could not create a new temporary file", .{}),
         error.TmpFileRead => std.log.err("could not read the content of the temporary file", .{}),
         error.StashIdea => std.log.err("could not store the idea", .{}),
