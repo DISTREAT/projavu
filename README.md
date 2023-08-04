@@ -4,6 +4,8 @@ A program for on-disk storing and managing of project ideas.
 
 _Build using zig version: `0.10.1`_
 
+![Screenshot](docs/screenshot.png)
+
 ## Features
 
 - Display ideas similar to [taskwarrior](https://taskwarrior.org/)
