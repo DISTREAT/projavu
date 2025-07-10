@@ -2,7 +2,7 @@
 
 A program for on-disk storing and managing of project ideas.
 
-_Build using zig version: `0.10.1`_
+_Build using zig version: `0.14.1`_
 
 ![Screenshot](docs/screenshot.png)
 
@@ -34,4 +34,3 @@ This repository contains both a CLI and library interface.
 The documentation for the library is created in the directory `docs/` when running `zig build`.
 
 [Documentation](https://distreat.github.io/projavu/)
-

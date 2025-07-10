@@ -10,17 +10,18 @@ const c = @cImport({
     @cInclude("levenshtein.h");
 });
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 const stdout = std.io.getStdOut().writer();
 
 // The main function wraps this function for error handling purposes
 fn run() CliError!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(!gpa.deinit()); // assert for memory leaks (only in debug mode)
+    defer std.debug.assert(gpa.deinit() == .ok); // assert for memory leaks (only in debug mode)
     const allocator = gpa.allocator();
 
     // needs to be in this scope to prevent segmentation fault, because function parseArguments returns type that reference its data
     const argument_vector = std.process.argsAlloc(allocator) catch return error.RetrieveArguments;
-    defer allocator.free(argument_vector);
+    defer std.process.argsFree(allocator, argument_vector);
 
     const arguments = try parseArguments(allocator, argument_vector);
     defer arguments.deinit();
@@ -121,7 +122,7 @@ fn parseArguments(allocator: Allocator, argument_vector: []const []const u8) Cli
             .{
                 .name = "progress",
                 .short_description = "Update the progress status of an idea",
-                .long_description = 
+                .long_description =
                 \\Options are:
                 \\  pending - This stage represents an idea that is being brainstormed or considered, but not acted upon
                 \\  nigh - This stage represents an idea that is being considered for implementation in the near future
@@ -163,7 +164,7 @@ fn parseArguments(allocator: Allocator, argument_vector: []const []const u8) Cli
 
     const arguments = argtic.ArgumentProcessor.parse(allocator, specification, argument_vector[1..]) catch |tokenization_error| {
         argtic.defaultErrorHandler(tokenization_error) catch {};
-        std.os.exit(22); // EINVAL
+        std.process.exit(22); // EINVAL
     };
 
     return arguments;
@@ -171,7 +172,7 @@ fn parseArguments(allocator: Allocator, argument_vector: []const []const u8) Cli
 
 // Return the idea to the ideabook overridden via the flag target-path or calculated from the XDG_DATA_HOME environment variable
 fn getIdeabookDir(allocator: Allocator, arguments: argtic.ArgumentProcessor) CliError!std.fs.Dir {
-    const xdg_data_home_path = std.os.getenv("XDG_DATA_HOME") orelse return error.MissingEnvironmentVariableXDGDataHome;
+    const xdg_data_home_path = std.posix.getenv("XDG_DATA_HOME") orelse return error.MissingEnvironmentVariableXDGDataHome;
     const default_root_path = try std.fs.path.join(allocator, &[_][]const u8{ xdg_data_home_path, "projavu" });
     defer allocator.free(default_root_path);
     const root_path = arguments.getArgument("target-path") orelse default_root_path;
@@ -203,7 +204,7 @@ fn cliTagIdea(allocator: Allocator, ideabook: projavu.IdeaBook, arguments: argti
             try tags.append(tag_to_add);
         } else if (arguments.isArgument("remove")) {
             var offset: usize = 0;
-            for (idea.tags) |tag, index| if (std.mem.eql(u8, tag, tag_to_add)) {
+            for (idea.tags, 0..) |tag, index| if (std.mem.eql(u8, tag, tag_to_add)) {
                 _ = tags.orderedRemove(index - offset);
                 offset += 1;
             };
@@ -213,7 +214,7 @@ fn cliTagIdea(allocator: Allocator, ideabook: projavu.IdeaBook, arguments: argti
     ideabook.editIdeaTags(idea.id, tags.items) catch return error.UpdateIdeaTags;
 
     stdout.writeAll("The tags were updated: ") catch {};
-    for (tags.items) |tag, index| {
+    for (tags.items, 0..) |tag, index| {
         if (index != 0) stdout.writeAll(", ") catch {};
         stdout.writeAll(tag) catch {};
     }
@@ -274,14 +275,14 @@ fn textEditor(allocator: Allocator, placeholder_text: []const u8) CliError!?[]co
 
     const temporary_file_basename = "tmp";
 
-    temporary_dir.dir.writeFile(temporary_file_basename, placeholder_text) catch return error.TmpFileCreate;
+    temporary_dir.dir.writeFile(.{ .sub_path = temporary_file_basename, .data = placeholder_text }) catch return error.TmpFileCreate;
 
     const temporary_file_path = temporary_dir.dir.realpathAlloc(allocator, temporary_file_basename) catch return error.TmpFileCreate;
     defer allocator.free(temporary_file_path);
     errdefer std.log.warn("the file may be manually recovered: {s}\n", .{temporary_file_path});
 
-    const editor_path = std.os.getenv("EDITOR") orelse return error.MissingEnvironmentVariableEDITOR;
-    var process = std.ChildProcess.init(&.{ editor_path, temporary_file_path }, allocator);
+    const editor_path = std.posix.getenv("EDITOR") orelse return error.MissingEnvironmentVariableEDITOR;
+    var process = std.process.Child.init(&.{ editor_path, temporary_file_path }, allocator);
     switch (process.spawnAndWait() catch return error.OpenEditor) {
         .Exited => |*signal| if (signal.* != 0) return error.OpenEditor,
         else => return error.OpenEditor,
@@ -440,7 +441,7 @@ fn cliFilterIdeas(allocator: Allocator, ideabook: projavu.IdeaBook, arguments: a
         if (filter_title.len != 0) {
             var match = false;
 
-            var title_split_by_space = std.mem.split(u8, idea.title, " ");
+            var title_split_by_space = std.mem.splitSequence(u8, idea.title, " ");
             while (title_split_by_space.next()) |word| {
                 if (word.len <= 2) continue;
 
@@ -465,10 +466,12 @@ fn cliFilterIdeas(allocator: Allocator, ideabook: projavu.IdeaBook, arguments: a
         const progress = try colorFormat(allocator, idea.progress.toString());
         defer allocator.free(progress);
 
-        var tags_formated = try allocator.dupe([]const u8, idea.tags);
+        var tags_formated = try allocator.alloc([:0]const u8, idea.tags.len);
         defer allocator.free(tags_formated);
+        for (idea.tags, 0..) |tag, i| {
+            tags_formated[i] = try colorFormat(allocator, tag);
+        }
         defer for (tags_formated) |tag| allocator.free(tag);
-        for (tags_formated) |*tag| tag.* = try colorFormat(allocator, tag.*);
         const tags = try std.mem.joinZ(allocator, ", ", tags_formated);
         defer allocator.free(tags);
 
@@ -499,9 +502,9 @@ fn colorFormat(allocator: Allocator, text: []const u8) ![:0]const u8 {
     const lighten = 140; // factor for the lightening of colors
     const max = 175; // all color values will be reduced to max
 
-    var R: f16 = @intToFloat(f16, md5_hash[shift_R]);
-    var G: f16 = @intToFloat(f16, md5_hash[shift_G]);
-    var B: f16 = @intToFloat(f16, md5_hash[shift_B]);
+    var R: f16 = @floatFromInt(md5_hash[shift_R]);
+    var G: f16 = @floatFromInt(md5_hash[shift_G]);
+    var B: f16 = @floatFromInt(md5_hash[shift_B]);
 
     const total: f16 = R + G + B;
 
@@ -520,7 +523,7 @@ fn colorFormat(allocator: Allocator, text: []const u8) ![:0]const u8 {
     return std.fmt.allocPrintZ(
         allocator,
         "\x1b[38;2;{d};{d};{d}m{s}\x1b[0m",
-        .{ @floatToInt(u8, R), @floatToInt(u8, G), @floatToInt(u8, B), text },
+        .{ @as(u8, @intFromFloat(R)), @as(u8, @intFromFloat(G)), @as(u8, @intFromFloat(B)), text },
     );
 }
 
@@ -562,7 +565,7 @@ pub fn main() void {
 
 // handle the errors that the frontend may return
 fn errorHandler(cli_error: CliError) void {
-    @setCold(true);
+    @branchHint(.cold);
 
     // wrapping the switch as an argument for std.log requires frontend_error to be comptime, so thus code duplication
     switch (cli_error) {
@@ -596,5 +599,5 @@ fn errorHandler(cli_error: CliError) void {
         error.OutOfMemory => std.log.err("there is not enough memory to run this application", .{}),
     }
 
-    std.os.exit(1);
+    std.process.exit(1);
 }

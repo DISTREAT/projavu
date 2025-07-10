@@ -60,14 +60,14 @@ pub const IdeaProgress = enum {
 
     /// Convert the enum value into a string representation
     pub fn toString(self: IdeaProgress) []const u8 {
-        return string_representation[@enumToInt(self)];
+        return string_representation[@intFromEnum(self)];
     }
 
     /// Convert a string into it's enum representation, if exists
     pub fn fromString(string: []const u8) ?IdeaProgress {
-        for (string_representation) |value, index| {
+        for (string_representation, 0..) |value, index| {
             if (std.mem.eql(u8, string, value)) {
-                return @intToEnum(IdeaProgress, index);
+                return @enumFromInt(index);
             }
         }
 
@@ -160,7 +160,10 @@ pub const IdeaBook = struct {
     fn writeTable(self: IdeaBook, table: *csv.Table) IdeaBookError!void {
         const csv_exported = table.exportCSV(self.allocator) catch return error.WriteTable;
         defer self.allocator.free(csv_exported);
-        self.root.writeFile(self.table_basename, csv_exported) catch return error.WriteTable;
+        self.root.writeFile(.{
+            .sub_path = self.table_basename,
+            .data = csv_exported,
+        }) catch return error.WriteTable;
     }
 
     /// Calculate a path via the content's hash that will be used as the idea's reference
@@ -183,18 +186,16 @@ pub const IdeaBook = struct {
     fn pathsOfContents(self: IdeaBook, allocator: Allocator) IdeaBookError![]const []const u8 {
         var references = ArrayList([]const u8).init(allocator);
 
-        var dir = self.root.openIterableDir(".", .{}) catch return error.ReadContent;
+        var dir = self.root.openDir(".", .{ .iterate = true }) catch return error.ReadContent;
         defer dir.close();
 
-        // the only error that should be able to return is OutOfMemory, since only Allocator.Error is returnable and it is the only field
-        var walker = dir.walk(self.allocator) catch return error.OutOfMemory;
-        defer walker.deinit();
-
+        var walker = dir.iterate();
         while (walker.next() catch return error.ReadContent) |entry| {
             // check for len 2 basename, since the path is calculated from the content's hash and
             // has a static size of 62 (file name) + 2 (dir name) = 64 c
-            if (entry.kind == .File and entry.basename.len == 62) {
-                try references.append(try allocator.dupe(u8, entry.path));
+            if (entry.kind == .file and entry.name.len == 62) {
+                const full_path = try std.fs.path.join(allocator, &[_][]const u8{ ".", entry.name });
+                try references.append(try allocator.dupe(u8, full_path));
             }
         }
 
@@ -382,7 +383,7 @@ pub const IdeaBook = struct {
                 const row_value_tags = (row.get(column_index_tags[0]) catch return error.UnexpectedTable).value;
 
                 // convert table representation of tags into []const u8
-                var tags_iterator = std.mem.split(u8, row_value_tags, " ");
+                var tags_iterator = std.mem.splitSequence(u8, row_value_tags, " ");
                 var tags = ArrayList([]const u8).init(allocator);
                 while (tags_iterator.next()) |tag| if (tag.len != 0) {
                     try tags.append(try allocator.dupe(u8, tag));
@@ -395,7 +396,7 @@ pub const IdeaBook = struct {
                     .reference = try allocator.dupe(u8, row_value_reference),
                     .content = try self.readContentFromReference(allocator, row_value_reference),
                     .progress = IdeaProgress.fromString(row_value_progress) orelse return error.UnexpectedTable,
-                    .tags = tags.toOwnedSlice(),
+                    .tags = try tags.toOwnedSlice(),
                 };
             }
         }

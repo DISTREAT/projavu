@@ -1,56 +1,80 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary("projavu-lib", "src/lib.zig");
-    const exe = b.addExecutable("projavu", "src/cli.zig");
-    const tests = b.addTest("src/tests.zig");
-
-    const zig_csv = std.build.Pkg{
-        .name = "zig-csv",
-        .source = .{ .path = "lib/zig-csv/src/zig-csv.zig" },
-    };
-
-    const zig_argtic = std.build.Pkg{
-        .name = "zig-argtic",
-        .source = .{ .path = "lib/zig-argtic/src/zig-argtic.zig" },
-    };
-
-    lib.addPackage(zig_csv);
-    exe.addPackage(zig_csv);
-    exe.addPackage(zig_argtic);
-    tests.addPackage(zig_csv);
-
-    exe.addIncludePath("lib/ctable/src");
-    exe.addCSourceFile("lib/ctable/src/table.c", &[_][]const u8{});
-    exe.addCSourceFile("lib/ctable/src/string_builder.c", &[_][]const u8{});
-    exe.addCSourceFile("lib/ctable/src/string_util.c", &[_][]const u8{});
-    exe.addCSourceFile("lib/ctable/src/vector.c", &[_][]const u8{});
-    exe.addIncludePath("lib/levenshtein.c");
-    exe.addCSourceFile("lib/levenshtein.c/levenshtein.c", &[_][]const u8{});
+    const lib = b.addStaticLibrary(.{
+        .name = "projavu-lib",
+        .root_source_file = .{ .cwd_relative = "src/lib.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    lib.want_lto = true;
+    const exe = b.addExecutable(.{
+        .name = "projavu",
+        .root_source_file = .{ .cwd_relative = "src/cli.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
     exe.linkLibC();
+    const tests = b.addTest(.{
+        .root_source_file = .{ .cwd_relative = "src/tests.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    const docs = b.addInstallDirectory(.{
+        .source_dir = lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
 
-    lib.setBuildMode(mode);
-    exe.setBuildMode(mode);
+    const zig_csv = b.createModule(.{
+        .root_source_file = .{ .cwd_relative = "lib/zig-csv/src/zig-csv.zig" },
+    });
 
-    lib.setTarget(target);
-    exe.setTarget(target);
+    const zig_argtic = b.createModule(.{
+        .root_source_file = .{ .cwd_relative = "lib/zig-argtic/src/zig-argtic.zig" },
+    });
 
-    lib.emit_docs = .emit;
+    lib.root_module.addImport("zig-csv", zig_csv);
+    exe.root_module.addImport("zig-csv", zig_csv);
+    exe.root_module.addImport("zig-argtic", zig_argtic);
+    tests.root_module.addImport("zig-csv", zig_csv);
 
-    lib.install();
-    exe.install();
+    const ctable_dir = "lib/ctable/src";
+    exe.addIncludePath(.{ .cwd_relative = ctable_dir });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            ctable_dir ++ "/table.c",
+            ctable_dir ++ "/string_builder.c",
+            ctable_dir ++ "/string_util.c",
+            ctable_dir ++ "/vector.c",
+        },
+        .flags = &.{},
+    });
+    const levenshtein_dir = "lib/levenshtein.c";
+    exe.addIncludePath(.{ .cwd_relative = levenshtein_dir });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            levenshtein_dir ++ "/levenshtein.c",
+        },
+        .flags = &.{},
+    });
 
-    const exe_run = exe.run();
+    b.installArtifact(lib);
+    b.installArtifact(exe);
+
+    const exe_cmd = b.addRunArtifact(exe);
     if (b.args) |args| {
-        exe_run.addArgs(args);
+        exe_cmd.addArgs(args);
     }
 
-    const tests_step = b.step("test", "Run all unit tests");
-    const exe_run_step = b.step("run", "Run the executable");
+    const tests_step = b.step("test", "Run unit tests");
+    const exe_run_step = b.step("run", "Run the application");
+    const docs_step = b.step("docs", "Generate library documentation");
 
-    tests_step.dependOn(&tests.step);
-    exe_run_step.dependOn(&exe_run.step);
+    tests_step.dependOn(&b.addRunArtifact(tests).step);
+    exe_run_step.dependOn(&exe_cmd.step);
+    docs_step.dependOn(&docs.step);
 }

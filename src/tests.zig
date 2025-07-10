@@ -69,12 +69,11 @@ const RandomIdea = struct {
 
     /// Return a random field of enum IdeaProgress
     fn randomIdeaProgress() projavu.IdeaProgress {
-        return @intToEnum(
-            projavu.IdeaProgress,
+        return @enumFromInt(
             std.crypto.random.intRangeAtMost(
                 usize,
                 0,
-                @typeInfo(projavu.IdeaProgress).Enum.fields.len - 1,
+                @typeInfo(projavu.IdeaProgress).@"enum".fields.len - 1,
             ),
         );
     }
@@ -117,7 +116,7 @@ const RandomIdea = struct {
         try expect(std.mem.eql(u8, idea.content, self.content));
         try expect(idea.progress == self.progress);
 
-        for (idea.tags) |tag, index| {
+        for (idea.tags, 0..) |tag, index| {
             try expect(std.mem.eql(u8, tag, self.tags[index]));
         }
     }
