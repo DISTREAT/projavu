@@ -160,10 +160,10 @@ pub const IdeaBook = struct {
     fn writeTable(self: IdeaBook, table: *csv.Table) IdeaBookError!void {
         const csv_exported = table.exportCSV(self.allocator) catch return error.WriteTable;
         defer self.allocator.free(csv_exported);
-        self.root.writeFile(.{
-            .sub_path = self.table_basename,
-            .data = csv_exported,
-        }) catch return error.WriteTable;
+        var atomic_file = self.root.atomicFile(self.table_basename, .{ .mode = 0o660 }) catch return error.WriteTable;
+        defer atomic_file.deinit();
+        atomic_file.file.writeAll(csv_exported) catch return error.WriteTable;
+        atomic_file.finish() catch return error.WriteTable;
     }
 
     /// Calculate a path via the content's hash that will be used as the idea's reference
